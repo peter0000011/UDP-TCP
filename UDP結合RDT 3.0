@@ -1,0 +1,63 @@
+# Sender
+import socket
+import time
+import os
+
+SERVER_IP = '127.0.0.1'
+SERVER_PORT = 12345
+ADDR = (SERVER_IP, SERVER_PORT)
+BUFFER_SIZE = 1024
+TIMEOUT = 0.5
+
+def send_image(image_path):
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    client_socket.settimeout(TIMEOUT)
+
+    with open(image_path, 'rb') as image_file:
+        data = image_file.read(BUFFER_SIZE)
+        seq_num = 0
+
+        while data:
+            packet = seq_num.to_bytes(4, 'big') + data
+            while True:
+                client_socket.sendto(packet, ADDR)
+                try:
+                    ack, _ = client_socket.recvfrom(BUFFER_SIZE)
+                    ack_seq_num = int.from_bytes(ack, 'big')
+                    if ack_seq_num == seq_num:
+                        seq_num += 1
+                        break
+                except socket.timeout:
+                    continue
+
+            data = image_file.read(BUFFER_SIZE)
+
+    client_socket.close()
+    print('Image sent successfully!')
+
+# Receiver
+def receive_image(save_path):
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    server_socket.bind(ADDR)
+    expected_seq_num = 0
+
+    with open(save_path, 'wb') as image_file:
+        while True:
+            packet, client_addr = server_socket.recvfrom(BUFFER_SIZE + 4)
+            seq_num = int.from_bytes(packet[:4], 'big')
+            data = packet[4:]
+
+            if seq_num == expected_seq_num:
+                image_file.write(data)
+                ack = seq_num.to_bytes(4, 'big')
+                server_socket.sendto(ack, client_addr)
+                expected_seq_num += 1
+            else:
+                ack = (expected_seq_num - 1).to_bytes(4, 'big')
+                server_socket.sendto(ack, client_addr)
+
+            if len(data) < BUFFER_SIZE:
+                break
+
+    server_socket.close()
+    print('Image received successfully!')
