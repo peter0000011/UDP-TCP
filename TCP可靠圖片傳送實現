@@ -1,0 +1,39 @@
+# Sender
+import socket
+import os
+
+SERVER_IP = '127.0.0.1'
+SERVER_PORT = 12345
+ADDR = (SERVER_IP, SERVER_PORT)
+
+def send_image(image_path):
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_socket.connect(ADDR)
+
+    with open(image_path, 'rb') as image_file:
+        data = image_file.read()
+        client_socket.sendall(data)
+
+    client_socket.close()
+    print('Image sent successfully!')
+
+# Receiver
+def receive_image(save_path):
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind(ADDR)
+    server_socket.listen(1)
+    print('Server is listening...')
+
+    conn, addr = server_socket.accept()
+    print(f'Connected by {addr}')
+
+    with open(save_path, 'wb') as image_file:
+        while True:
+            data = conn.recv(1024)
+            if not data:
+                break
+            image_file.write(data)
+
+    conn.close()
+    server_socket.close()
+    print('Image received successfully!')
