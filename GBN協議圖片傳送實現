@@ -1,0 +1,69 @@
+# GBN Sender
+import socket
+import time
+import os
+
+SERVER_IP = '127.0.0.1'
+SERVER_PORT = 12345
+ADDR = (SERVER_IP, SERVER_PORT)
+BUFFER_SIZE = 1024
+WINDOW_SIZE = 4
+TIMEOUT = 0.5
+
+def gbn_send_image(image_path):
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    client_socket.settimeout(TIMEOUT)
+
+    with open(image_path, 'rb') as image_file:
+        data = image_file.read(BUFFER_SIZE)
+        seq_num = 0
+        base = 0
+        window = []
+
+        while data or window:
+            if data and len(window) < WINDOW_SIZE:
+                packet = seq_num.to_bytes(4, 'big') + data
+                client_socket.sendto(packet, ADDR)
+                window.append(packet)
+                seq_num += 1
+                data = image_file.read(BUFFER_SIZE)
+
+            try:
+                ack, _ = client_socket.recvfrom(BUFFER_SIZE)
+                ack_seq_num = int.from_bytes(ack, 'big')
+                if ack_seq_num >= base:
+                    window = window[ack_seq_num - base + 1:]
+                    base = ack_seq_num + 1
+            except socket.timeout:
+                for pkt in window:
+                    client_socket.sendto(pkt, ADDR)
+
+    client_socket.close()
+    print('Image sent successfully!')
+
+# GBN Receiver
+def gbn_receive_image(save_path):
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    server_socket.bind(ADDR)
+    expected_seq_num = 0
+
+    with open(save_path, 'wb') as image_file:
+        while True:
+            packet, client_addr = server_socket.recvfrom(BUFFER_SIZE + 4)
+            seq_num = int.from_bytes(packet[:4], 'big')
+            data = packet[4:]
+
+            if seq_num == expected_seq_num:
+                image_file.write(data)
+                ack = seq_num.to_bytes(4, 'big')
+                server_socket.sendto(ack, client_addr)
+                expected_seq_num += 1
+            else:
+                ack = (expected_seq_num - 1).to_bytes(4, 'big')
+                server_socket.sendto(ack, client_addr)
+
+            if len(data) < BUFFER_SIZE:
+                break
+
+    server_socket.close()
+    print('Image received successfully!')
